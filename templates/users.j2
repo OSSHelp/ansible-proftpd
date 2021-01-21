@@ -1,0 +1,9 @@
+users:
+{% for item in ftp_users %}
+  {{ item.name }}:
+    uid: {{ item.uid }}
+    gid: {{ item.gid }}
+    home: {{ item.home }}
+    shell: {{ item.shell }}
+    password: {{ item.password }}
+{% endfor %}

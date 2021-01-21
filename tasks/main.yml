@@ -1,0 +1,73 @@
+---
+- name: package installation
+  apt:
+    name: "{{ packages }}"
+    update_cache: true
+    cache_valid_time: 86400
+
+- name: enable proftpd service
+  service:
+    name: proftpd
+    enabled: yes
+
+- name: deploy configuration
+  lineinfile:
+    dest: "{{ conf_path }}"
+    regexp: "^{{ item.key }} "
+    line: "{{ item.key }} {{ item.value }}"
+  loop: "{{ proftpd_params }}"
+  notify: restart proftpd service
+
+- name: deploy proftpd custom config
+  copy:
+    src: "files/conf.d/"
+    dest: "{{ custom_conf_dir }}"
+  when: enable_virtual_users or place_user_creation_script
+
+- name: download yq
+  get_url:
+    url: "https://oss.help/builds/pub/yq/2.1.2/yq_linux_amd64"
+    dest: "/usr/local/bin/yq"
+    mode: 0755
+    checksum: "sha256:https://oss.help/builds/pub/yq/2.1.2/SHA256SUMS"
+  when: enable_virtual_users or place_user_creation_script
+
+- name: prepare directory {{ user_creation_script_dir }}
+  file:
+    path: "{{ user_creation_script_dir }}"
+    state: directory
+    owner: "root"
+    group: "root"
+    mode: 0700
+  when: enable_virtual_users or place_user_creation_script
+
+- name: place users config
+  template:
+    src: users.j2
+    dest: '/usr/local/etc/proftpd_user_creator/users.yml'
+    mode: 0600
+  when: enable_virtual_users or place_user_creation_script
+
+- name: deploy custom.proftpd_user_creator
+  copy:
+    src: "custom.proftpd_user_creator"
+    dest: "/usr/local/sbin/custom.proftpd_user_creator"
+    mode: 0700
+  when: enable_virtual_users or place_user_creation_script
+
+- name: create proftpd passwd file
+  file:
+    path: /etc/proftpd/ftpd.passwd
+    state: touch
+    owner: proftpd
+    group: root
+    mode: 0440
+    modification_time: preserve
+    access_time: preserve
+  notify: reload proftpd unit
+  when: enable_virtual_users or place_user_creation_script
+
+- name: create virtual proftpd users
+  command: /usr/local/sbin/custom.proftpd_user_creator
+  when: enable_virtual_users
+  changed_when: False

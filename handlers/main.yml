@@ -1,0 +1,6 @@
+---
+- name: restart proftpd service
+  systemd: name=proftpd state=restarted
+
+- name: reload proftpd unit
+  systemd: name=proftpd state=reloaded

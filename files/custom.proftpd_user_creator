@@ -1,0 +1,54 @@
+#!/bin/bash
+# shellcheck disable=SC2207
+
+# Vars
+ftpasswd_bin=$(command -v ftpasswd)
+yq_bin=$(command -v yq)
+cfg_file='/usr/local/etc/proftpd_user_creator/users.yml'
+passwd_file='/etc/proftpd/ftpd.passwd'
+err=0
+
+#Functions
+function show_error()  { local message="${1}"; echo -e "${message}" >&2; err=1; }
+function file_readable_nonempty() { test -r "${1}" -a -s "${1}"; }
+function get_value() {
+  local key_name="${1}"; local file_name="${2}"; local default_value="${3}"
+  file_readable_nonempty "${file_name}" && {
+    key_value=$(yq r "${file_name}" "${key_name}" 2>/dev/null)
+    test -n "${key_value}" -a "${key_value}" != "null" && echo -n "${key_value}"
+    test -z "${key_value}" -o "${key_value}" = "null" && echo -n "${default_value}"
+  }
+  file_readable_nonempty "${file_name}" || echo -n "${default_value}"
+}
+function get_keys() {
+  local key_name="${1}"; local file_name="${2}"
+  keys_list=$(${yq_bin} r "${file_name}" "${key_name}" 2>/dev/null)
+  echo "${keys_list}" | sed -rn 's|^(\S+):.*|\1|p'
+}
+function main() {
+  test -x "${ftpasswd_bin}" || { show_error "Can't find ftpasswd binary!"; exit 1; }
+  test -x "${yq_bin}" || { show_error "Can't find yq binary!"; exit 1; }
+  file_readable_nonempty "${cfg_file}" && {
+    virtual_users=($(get_keys users "${cfg_file}"))
+    test "${#virtual_users[@]}" -gt 0 && {
+      for user_name in "${virtual_users[@]}"; do
+        user_uid=$(get_value "users.${user_name}.uid" "${cfg_file}" none)
+        user_gid=$(get_value "users.${user_name}.gid" "${cfg_file}" none)
+        user_home=$(get_value "users.${user_name}.home" "${cfg_file}" none)
+        user_shell=$(get_value "users.${user_name}.shell" "${cfg_file}" "/bin/false")
+        user_password=$(get_value "users.${user_name}.password" "${cfg_file}" none)
+
+        test "${user_uid}" == none && { show_error "No uid received for user \"${user_name}\" skipping creation!"; continue; }
+        test "${user_gid}" == none && { show_error "No gid received for user \"${user_name}\" skipping creation!"; continue; }
+        test "${user_home}" == none && { show_error "No home received for user \"${user_name}\" skipping creation!"; continue; }
+        test "${user_password}" == none && { show_error "No password received for user \"${user_name}\" skipping creation!"; continue; }
+
+        echo "${user_password}" | ftpasswd --passwd --file="${passwd_file}" --name="${user_name}" --uid="${user_uid}" --gid="${user_gid}" --home="${user_home}" --shell="${user_shell}" --stdin > /dev/null || \
+          show_error "An error occurred during creation of proftpd user \"${user_name}\"!"
+      done
+    }
+  }
+  return "${err}"
+}
+
+main "${@}"

@@ -1,0 +1,13 @@
+---
+packages:
+  - proftpd
+  - apg
+
+conf_path: /etc/proftpd/proftpd.conf
+custom_conf_dir: /etc/proftpd/conf.d
+
+place_user_creation_script: no
+user_creation_script_dir: '/usr/local/etc/proftpd_user_creator'
+enable_virtual_users: no
+proftpd_params: []
+ftp_users: []
